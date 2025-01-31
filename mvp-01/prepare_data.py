@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class MammogramPreprocessor:
     def __init__(self, base_dir: str = "data"):
         self.base_dir = Path(base_dir)
-        self.tar_path = self.base_dir / "images.tar.gz"
+        self.tar_path = self.base_dir / "images.tar.xz"
         self.image_dir = self.base_dir / "images"
         self.info_path = self.image_dir / "Info.txt"
         self.dataset_dir = self.base_dir / "processed_data"
@@ -24,12 +24,12 @@ class MammogramPreprocessor:
         self.splits_path = self.base_dir / "dataset_splits.json"
 
     def extract_tarfile(self) -> None:
-        """Extract the tar.gz archive containing images."""
+        """Extract the tar.xz archive containing images."""
         if not self.tar_path.exists():
             raise FileNotFoundError(f"Archive not found: {self.tar_path}")
         
         logger.info(f"Extracting {self.tar_path}...")
-        with tarfile.open(self.tar_path, 'r:gz') as tar:
+        with tarfile.open(self.tar_path, 'r:xz') as tar:
             tar.extractall(path=self.base_dir)
         logger.info("Extraction complete")
 

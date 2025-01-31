@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import tarfile
 from pathlib import Path
 from typing import Dict, List, Tuple
 import json
@@ -12,14 +13,25 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class MammogramPreprocessor:
-    def __init__(self, base_dir: str = "mini-mias"):
+    def __init__(self, base_dir: str = "data"):
         self.base_dir = Path(base_dir)
+        self.tar_path = self.base_dir / "images.tar.gz"
         self.image_dir = self.base_dir / "images"
         self.info_path = self.image_dir / "Info.txt"
-        self.dataset_dir = self.image_dir / "mini_mias_dataset_processed"
+        self.dataset_dir = self.base_dir / "processed_data"
         self.malignant_dir = self.dataset_dir / "malignant"
         self.non_malignant_dir = self.dataset_dir / "non_malignant"
         self.splits_path = self.base_dir / "dataset_splits.json"
+
+    def extract_tarfile(self) -> None:
+        """Extract the tar.gz archive containing images."""
+        if not self.tar_path.exists():
+            raise FileNotFoundError(f"Archive not found: {self.tar_path}")
+        
+        logger.info(f"Extracting {self.tar_path}...")
+        with tarfile.open(self.tar_path, 'r:gz') as tar:
+            tar.extractall(path=self.base_dir)
+        logger.info("Extraction complete")
 
     def setup_directories(self) -> None:
         """Create necessary directories."""
@@ -28,10 +40,7 @@ class MammogramPreprocessor:
         logger.info(f"Created directories at {self.dataset_dir}")
 
     def parse_info_file(self) -> Dict[str, int]:
-        """Parse Info.txt to determine image labels.
-        Returns:
-            Dict mapping mdb references to labels (1=malignant, 0=non-malignant)
-        """
+        """Parse Info.txt to determine image labels."""
         file_to_label = defaultdict(int)
         
         with open(self.info_path, "r") as f:
@@ -44,14 +53,12 @@ class MammogramPreprocessor:
                 mdb_ref = parts[0]
                 abnormality = parts[2]
                 
-                # Determine label
                 if abnormality == "NORM":
                     label = 0
                 else:
                     severity = parts[3]
                     label = 1 if severity == "M" else 0
                     
-                # Keep highest severity if multiple entries
                 file_to_label[mdb_ref] = max(file_to_label[mdb_ref], label)
         
         logger.info(f"Found {sum(file_to_label.values())} malignant and "
@@ -59,10 +66,7 @@ class MammogramPreprocessor:
         return dict(file_to_label)
 
     def copy_images(self, file_to_label: Dict[str, int]) -> Tuple[List[str], List[str]]:
-        """Copy images to appropriate directories based on labels.
-        Returns:
-            Tuple of (malignant_files, non_malignant_files)
-        """
+        """Copy images to appropriate directories based on labels."""
         malignant_files = []
         non_malignant_files = []
         
@@ -88,16 +92,10 @@ class MammogramPreprocessor:
     def create_dataset_splits(self, malignant_files: List[str], 
                             non_malignant_files: List[str],
                             ratios: Tuple[float, float, float] = (0.8, 0.1, 0.1)) -> None:
-        """Create train/val/test splits maintaining class balance.
-        Args:
-            malignant_files: List of malignant image paths
-            non_malignant_files: List of non-malignant image paths
-            ratios: (train, val, test) ratios, must sum to 1.0
-        """
+        """Create train/val/test splits maintaining class balance."""
         assert sum(ratios) == 1.0, "Split ratios must sum to 1.0"
         train_ratio, val_ratio, test_ratio = ratios
         
-        # Calculate split sizes based on malignant (minority) class
         n_malignant = len(malignant_files)
         train_size = int(n_malignant * train_ratio)
         val_size = int(n_malignant * val_ratio)
@@ -131,6 +129,7 @@ class MammogramPreprocessor:
 
     def process(self) -> None:
         """Run full preprocessing pipeline."""
+        self.extract_tarfile()
         self.setup_directories()
         file_to_label = self.parse_info_file()
         malignant_files, non_malignant_files = self.copy_images(file_to_label)
